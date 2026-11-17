@@ -1,0 +1,9 @@
+# Archivo de utilidad para desarrollo local (auto-guardado en disco)
+server.py
+
+# Archivos de sistema y temporales
+.DS_Store
+Thumbs.db
+__pycache__/
+*.pyc
+
