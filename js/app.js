@@ -21,7 +21,7 @@ const THEME_KEY = "bus_pass_planner_theme";
 class BusPassApp {
   constructor() {
     this.currentBaseYear = this.determineBaseYear();
-    this.activeMonthKey = "nov";
+    this.activeMonthKey = this.getCurrentAcademicMonthKey();
     this.defaultTripsPerDay = 2;
     this.editingDay = null; // For modal customizer
     this.serverSyncSupported = true;
@@ -40,6 +40,18 @@ class BusPassApp {
 
     // Load source of truth directly from data.json
     this.loadFromJsonFile();
+  }
+
+  getCurrentAcademicMonthKey() {
+    const today = new Date();
+    const currentMonthIndex = today.getMonth(); // 0 = Ene, 1 = Feb, ..., 10 = Nov, 11 = Dic
+    const match = ACADEMIC_MONTHS.find(m => m.monthIndex === currentMonthIndex);
+    if (match) {
+      return match.key;
+    }
+    // If today is outside the academic window (e.g., summer months June to October),
+    // default to the start of the course (November)
+    return "nov";
   }
 
   determineBaseYear() {
@@ -102,12 +114,12 @@ class BusPassApp {
             const select = document.getElementById("defaultTripsSelect");
             if (select) select.value = this.defaultTripsPerDay;
           }
-          if (parsed.activeMonthKey) {
-            this.activeMonthKey = parsed.activeMonthKey;
-          }
+          // Always ensure the app opens in the current real-world month
+          this.activeMonthKey = this.getCurrentAcademicMonthKey();
 
           this.updateStatusBadge("synced", "data.json sincronizado");
           this.render();
+          this.scrollActiveMonthIntoView();
           return;
         }
       }
@@ -517,12 +529,17 @@ class BusPassApp {
       this.activeMonthKey = key;
       this.saveState();
       this.render();
-      // Scroll active chip into view smoothly
-      const activeChip = document.querySelector(`.month-chip[data-month="${key}"]`);
+      this.scrollActiveMonthIntoView();
+    }
+  }
+
+  scrollActiveMonthIntoView() {
+    setTimeout(() => {
+      const activeChip = document.querySelector(`.month-chip[data-month="${this.activeMonthKey}"]`);
       if (activeChip) {
         activeChip.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
       }
-    }
+    }, 60);
   }
 
   toggleDay(dayNumber) {
