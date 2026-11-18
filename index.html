@@ -266,14 +266,29 @@
         </button>
       </div>
 
-      <div style="background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 0.85rem; margin-bottom: 1rem; font-size: 0.8rem; color: var(--text-secondary); line-height: 1.45;">
-        <p style="margin-bottom: 0.45rem;">
-          Toda la configuración y los días de clase se leen y guardan directamente en el archivo <strong>data.json</strong>. No se utiliza localStorage.
+      <div style="background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 0.85rem; margin-bottom: 0.85rem; font-size: 0.8rem; color: var(--text-secondary); line-height: 1.45;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem;">
+          <strong style="color: var(--text-primary); display: flex; align-items: center; gap: 0.35rem;">
+            <svg class="duotone-icon" width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <path class="duo-s" d="M12 2C6.477 2 2 6.477 2 12C2 16.42 4.87 20.17 8.84 21.5C9.34 21.58 9.5 21.27 9.5 21V19.31C6.73 19.91 6.14 17.97 6.14 17.97C5.68 16.81 5.03 16.5 5.03 16.5C4.12 15.88 5.1 15.9 5.1 15.9C6.1 15.97 6.63 16.93 6.63 16.93C7.5 18.45 8.97 18 9.54 17.76C9.63 17.11 9.89 16.67 10.17 16.42C7.95 16.17 5.62 15.31 5.62 11.5C5.62 10.41 6 9.5 6.65 8.79C6.55 8.54 6.2 7.5 6.75 6.15C6.75 6.15 7.59 5.88 9.5 7.17C10.29 6.95 11.15 6.84 12 6.84C12.85 6.84 13.71 6.95 14.5 7.17C16.41 5.88 17.25 6.15 17.25 6.15C17.8 7.5 17.45 8.54 17.35 8.79C18 9.5 18.38 10.41 18.38 11.5C18.38 15.32 16.04 16.16 13.81 16.41C14.17 16.72 14.5 17.33 14.5 18.26V21C14.5 21.27 14.66 21.59 15.17 21.5C19.14 20.16 22 16.42 22 12C22 6.477 17.52 2 12 2Z" />
+            </svg>
+            Auto-Commit en GitHub
+          </strong>
+          <span id="ghConnectionStatus" style="font-size: 0.7rem; font-weight: 600; color: var(--text-muted);">Sin conectar</span>
+        </div>
+        <p style="font-size: 0.74rem; color: var(--text-muted); margin-bottom: 0.5rem;">
+          Incrusta tus cambios directamente en el repositorio <code>jorgemompean/bus</code> cada vez que toques un día desde el móvil o GitHub Pages.
         </p>
-        <ul style="padding-left: 1.2rem; font-size: 0.75rem; color: var(--text-muted);">
-          <li><strong>En local (Python):</strong> Cada clic o cambio reescribe automáticamente <code>data.json</code> en tu disco duro.</li>
-          <li><strong>En GitHub Pages:</strong> Descarga el archivo <code>data.json</code> actualizado para comitearlo a tu repositorio.</li>
-        </ul>
+        <div style="display: flex; gap: 0.4rem; margin-bottom: 0.4rem;">
+          <input type="password" id="ghTokenInput" class="sync-input" placeholder="Pega tu Personal Access Token (ghp_...)" style="font-size: 0.78rem;">
+          <button class="btn-primary" id="ghConnectBtn" style="flex: 0 0 auto; padding: 0.45rem 0.85rem; font-size: 0.78rem;">Conectar</button>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.7rem;">
+          <a href="https://github.com/settings/tokens/new?scopes=repo&description=BusPass%20Auto-Sync" target="_blank" rel="noopener" style="color: var(--accent-cyan); text-decoration: underline;">
+            Crear Token en GitHub (1 clic)
+          </a>
+          <button id="ghDisconnectBtn" style="background: none; border: none; color: var(--accent-rose); cursor: pointer; display: none; font-size: 0.7rem;">Desconectar token</button>
+        </div>
       </div>
 
       <div style="display: flex; flex-direction: column; gap: 0.65rem;">

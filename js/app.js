@@ -27,6 +27,12 @@ class BusPassApp {
     this.serverSyncSupported = true;
     this.lastSavedTimestamp = null;
 
+    // GitHub Direct Auto-Commit credentials
+    this.ghToken = localStorage.getItem("buspass_gh_token") || "";
+    this.ghRepo = localStorage.getItem("buspass_gh_repo") || "jorgemompean/bus";
+    this.ghBranch = localStorage.getItem("buspass_gh_branch") || "main";
+    this.ghCommitTimer = null;
+
     // Default template state (used while data.json loads or if offline)
     this.state = this.createDefaultState();
     
@@ -38,7 +44,7 @@ class BusPassApp {
     const yearEl = document.getElementById("currentYear");
     if (yearEl) yearEl.textContent = new Date().getFullYear();
 
-    // Load source of truth directly from data.json
+    // Load source of truth directly from data.json or GitHub API
     this.loadFromJsonFile();
   }
 
@@ -88,53 +94,105 @@ class BusPassApp {
   }
 
   /* --------------------------------------------------------------------------
-     JSON FILE DATA LAYER (SOURCE OF TRUTH)
+     JSON FILE & GITHUB API DATA LAYER (SOURCE OF TRUTH)
      -------------------------------------------------------------------------- */
   async loadFromJsonFile() {
     this.updateStatusBadge("loading", "Cargando data.json...");
+
+    // 1. If GitHub Token is connected, query GitHub Contents API directly (real-time, zero cache delay)
+    if (this.ghToken) {
+      try {
+        const ghUrl = `https://api.github.com/repos/${this.ghRepo}/contents/data.json?ref=${this.ghBranch}&_t=${Date.now()}`;
+        const ghRes = await fetch(ghUrl, {
+          headers: {
+            "Authorization": `Bearer ${this.ghToken}`,
+            "Accept": "application/vnd.github+json"
+          }
+        });
+        if (ghRes.ok) {
+          const fileData = await ghRes.json();
+          if (fileData && fileData.content) {
+            const rawJson = decodeURIComponent(escape(atob(fileData.content.replace(/\n/g, ""))));
+            const parsed = JSON.parse(rawJson);
+            if (this.applyLoadedState(parsed)) {
+              this.updateStatusBadge("synced", "data.json sincronizado (GitHub)");
+              return;
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("Could not load from GitHub API, falling back to static file", err);
+      }
+    }
+
+    // 2. Fallback to static data.json (or local Python server)
     try {
       const response = await fetch(`${DATA_FILE_URL}?_t=${Date.now()}`);
       if (response.ok) {
         const parsed = await response.json();
-        if (parsed && parsed.months) {
-          // Sanitize months (remove jun if present in older files)
-          if (parsed.months.jun) delete parsed.months.jun;
-          if (parsed.activeMonthKey === "jun") parsed.activeMonthKey = "nov";
-
-          // Ensure all active academic months exist
-          ACADEMIC_MONTHS.forEach(m => {
-            if (!parsed.months[m.key]) {
-              parsed.months[m.key] = this.getDefaultMonthState(m.key);
-            }
-          });
-
-          this.state = parsed;
-          if (parsed.defaultTripsPerDay) {
-            this.defaultTripsPerDay = parsed.defaultTripsPerDay;
-            const select = document.getElementById("defaultTripsSelect");
-            if (select) select.value = this.defaultTripsPerDay;
-          }
-          // Always ensure the app opens in the current real-world month
-          this.activeMonthKey = this.getCurrentAcademicMonthKey();
-
+        if (this.applyLoadedState(parsed)) {
           this.updateStatusBadge("synced", "data.json sincronizado");
-          this.render();
-          this.scrollActiveMonthIntoView();
           return;
         }
       }
       this.updateStatusBadge("warning", "data.json no encontrado, usando plantilla");
     } catch (e) {
-      console.warn("Could not load data.json from server, using default template", e);
+      console.warn("Could not load data.json from server, checking local backup", e);
+      // Check if there is an unsaved local backup
+      try {
+        const localBackup = localStorage.getItem("buspass_local_backup");
+        if (localBackup) {
+          const parsed = JSON.parse(localBackup);
+          if (this.applyLoadedState(parsed.state || parsed)) {
+            this.updateStatusBadge("memory", "Cargado desde copia local");
+            return;
+          }
+        }
+      } catch (err) {}
       this.updateStatusBadge("warning", "Modo sin servidor (data.json plantilla)");
     }
+  }
+
+  applyLoadedState(parsed) {
+    if (!parsed || !parsed.months) return false;
+
+    // Sanitize months (remove jun if present in older files)
+    if (parsed.months.jun) delete parsed.months.jun;
+    if (parsed.activeMonthKey === "jun") parsed.activeMonthKey = "nov";
+
+    // Ensure all active academic months exist
+    ACADEMIC_MONTHS.forEach(m => {
+      if (!parsed.months[m.key]) {
+        parsed.months[m.key] = this.getDefaultMonthState(m.key);
+      }
+    });
+
+    this.state = parsed;
+    if (parsed.defaultTripsPerDay) {
+      this.defaultTripsPerDay = parsed.defaultTripsPerDay;
+      const select = document.getElementById("defaultTripsSelect");
+      if (select) select.value = this.defaultTripsPerDay;
+    }
+    // Always ensure the app opens in the current real-world month
+    this.activeMonthKey = this.getCurrentAcademicMonthKey();
+
+    this.render();
+    this.scrollActiveMonthIntoView();
+    return true;
   }
 
   async saveState() {
     this.state.defaultTripsPerDay = this.defaultTripsPerDay;
     this.state.activeMonthKey = this.activeMonthKey;
-    this.updateStatusBadge("saving", "Guardando en data.json...");
 
+    // Save immediate local backup so accidental refresh never loses changes
+    try {
+      localStorage.setItem("buspass_local_backup", JSON.stringify({ state: this.state, ts: Date.now() }));
+    } catch (e) {}
+
+    this.updateStatusBadge("saving", "Guardando cambios...");
+
+    // 1. Try local server (server.py) first
     try {
       const response = await fetch("/api/save", {
         method: "POST",
@@ -145,16 +203,160 @@ class BusPassApp {
       if (response.ok) {
         this.serverSyncSupported = true;
         this.lastSavedTimestamp = new Date();
-        this.updateStatusBadge("synced", `Guardado en data.json (${this.formatTime(this.lastSavedTimestamp)})`);
-      } else {
-        // If /api/save is not supported (e.g. GitHub Pages static server)
-        this.serverSyncSupported = false;
-        this.updateStatusBadge("memory", "Modo GitHub Pages (Descarga data.json para comitear)");
+        this.updateStatusBadge("synced", `Guardado en disco (${this.formatTime(this.lastSavedTimestamp)})`);
+        return;
       }
     } catch (e) {
-      // Static server / GitHub Pages
+      // Local server not available, proceeding to GitHub or static mode
+    }
+
+    // 2. If GitHub Token is configured, perform debounced auto-commit
+    if (this.ghToken) {
+      this.scheduleGithubCommit();
+    } else {
+      // Static server / GitHub Pages without token
       this.serverSyncSupported = false;
-      this.updateStatusBadge("memory", "Modo GitHub Pages (Descarga data.json para comitear)");
+      this.updateStatusBadge("memory", "data.json (en memoria). Conecta GitHub para auto-commit");
+    }
+  }
+
+  scheduleGithubCommit() {
+    if (this.ghCommitTimer) clearTimeout(this.ghCommitTimer);
+    this.updateStatusBadge("saving", "Comiteando en GitHub...");
+
+    this.ghCommitTimer = setTimeout(() => {
+      this.commitToGithub();
+    }, 1200);
+  }
+
+  async commitToGithub() {
+    if (!this.ghToken) return;
+
+    try {
+      // Step A: Get current file SHA from GitHub API
+      const getUrl = `https://api.github.com/repos/${this.ghRepo}/contents/data.json?ref=${this.ghBranch}&_t=${Date.now()}`;
+      const getRes = await fetch(getUrl, {
+        headers: {
+          "Authorization": `Bearer ${this.ghToken}`,
+          "Accept": "application/vnd.github+json"
+        }
+      });
+
+      if (!getRes.ok) {
+        throw new Error(`Error al leer archivo en GitHub (HTTP ${getRes.status})`);
+      }
+
+      const fileInfo = await getRes.json();
+      const currentSha = fileInfo.sha;
+
+      // Step B: Encode JSON to Base64 (supporting UTF-8 characters safely)
+      const jsonString = JSON.stringify(this.state, null, 2);
+      const b64Content = btoa(unescape(encodeURIComponent(jsonString)));
+
+      // Step C: Push commit via PUT
+      const putUrl = `https://api.github.com/repos/${this.ghRepo}/contents/data.json`;
+      const putRes = await fetch(putUrl, {
+        method: "PUT",
+        headers: {
+          "Authorization": `Bearer ${this.ghToken}`,
+          "Accept": "application/vnd.github+json",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          message: `update: actualizar viajes en data.json [BusPass Web]`,
+          content: b64Content,
+          sha: currentSha,
+          branch: this.ghBranch
+        })
+      });
+
+      if (putRes.ok) {
+        this.lastSavedTimestamp = new Date();
+        this.updateStatusBadge("synced", `Incrustado en GitHub (${this.formatTime(this.lastSavedTimestamp)})`);
+      } else {
+        const errData = await putRes.json().catch(() => ({}));
+        throw new Error(errData.message || `HTTP ${putRes.status}`);
+      }
+    } catch (err) {
+      console.error("Error al comitear en GitHub:", err);
+      this.updateStatusBadge("warning", "Error al comitear en GitHub (revisa token)");
+    }
+  }
+
+  async connectGithubToken(token) {
+    const cleanToken = (token || "").trim();
+    if (!cleanToken) {
+      alert("Introduce un token válido.");
+      return;
+    }
+
+    this.updateStatusBadge("loading", "Verificando token de GitHub...");
+
+    try {
+      // Validate token against repository contents endpoint
+      const checkRes = await fetch(`https://api.github.com/repos/${this.ghRepo}/contents/data.json?ref=${this.ghBranch}&_t=${Date.now()}`, {
+        headers: {
+          "Authorization": `Bearer ${cleanToken}`,
+          "Accept": "application/vnd.github+json"
+        }
+      });
+
+      if (checkRes.ok) {
+        this.ghToken = cleanToken;
+        localStorage.setItem("buspass_gh_token", cleanToken);
+        this.updateGhUiStatus();
+        this.updateStatusBadge("synced", "Conectado a GitHub (Auto-commit activo)");
+        alert("¡Conexión con GitHub exitosa! Ahora cualquier cambio se comiteará directamente en tu repositorio.");
+        // Trigger initial sync commit
+        await this.commitToGithub();
+      } else if (checkRes.status === 401) {
+        alert("Token inválido o expirado. Revisa que lo hayas copiado completo.");
+        this.updateStatusBadge("warning", "Token de GitHub no válido");
+      } else if (checkRes.status === 404) {
+        alert("Repositorio o archivo no encontrado. Verifica que el token tenga permisos sobre 'jorgemompean/bus'.");
+        this.updateStatusBadge("warning", "Repo no accesible");
+      } else {
+        alert(`Error al conectar con GitHub (${checkRes.status}).`);
+      }
+    } catch (err) {
+      alert("Error de red al conectar con GitHub API.");
+    }
+  }
+
+  disconnectGithubToken() {
+    this.ghToken = "";
+    localStorage.removeItem("buspass_gh_token");
+    this.updateGhUiStatus();
+    this.updateStatusBadge("memory", "data.json (en memoria)");
+    alert("Token de GitHub desconectado.");
+  }
+
+  updateGhUiStatus() {
+    const statusEl = document.getElementById("ghConnectionStatus");
+    const inputEl = document.getElementById("ghTokenInput");
+    const connectBtn = document.getElementById("ghConnectBtn");
+    const disconnectBtn = document.getElementById("ghDisconnectBtn");
+
+    if (this.ghToken) {
+      if (statusEl) {
+        statusEl.innerHTML = `<span style="color: var(--accent-emerald);">● Conectado a ${this.ghRepo}</span>`;
+      }
+      if (inputEl) {
+        inputEl.value = "••••••••••••••••••••••••••••••••••••••••";
+        inputEl.disabled = true;
+      }
+      if (connectBtn) connectBtn.style.display = "none";
+      if (disconnectBtn) disconnectBtn.style.display = "inline-block";
+    } else {
+      if (statusEl) {
+        statusEl.innerHTML = `<span style="color: var(--text-muted);">Sin conectar</span>`;
+      }
+      if (inputEl) {
+        inputEl.value = "";
+        inputEl.disabled = false;
+      }
+      if (connectBtn) connectBtn.style.display = "inline-block";
+      if (disconnectBtn) disconnectBtn.style.display = "none";
     }
   }
 
@@ -199,6 +401,7 @@ class BusPassApp {
   }
 
   openJsonModal() {
+    this.updateGhUiStatus();
     const modal = document.getElementById("jsonModal");
     if (modal) modal.classList.add("active");
   }
@@ -471,6 +674,24 @@ class BusPassApp {
       alert("¡data.json recargado!");
       this.closeJsonModal();
     });
+
+    // GitHub Auto-Commit buttons
+    const ghConnectBtn = document.getElementById("ghConnectBtn");
+    if (ghConnectBtn) {
+      ghConnectBtn.addEventListener("click", () => {
+        const input = document.getElementById("ghTokenInput");
+        if (input) this.connectGithubToken(input.value);
+      });
+    }
+
+    const ghDisconnectBtn = document.getElementById("ghDisconnectBtn");
+    if (ghDisconnectBtn) {
+      ghDisconnectBtn.addEventListener("click", () => {
+        if (confirm("¿Desconectar el token de GitHub? Los cambios volverán a ser solo locales.")) {
+          this.disconnectGithubToken();
+        }
+      });
+    }
 
     // Touch long-press handler on calendar days container
     this.setupTouchLongPress();
