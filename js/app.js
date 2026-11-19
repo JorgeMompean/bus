@@ -756,9 +756,14 @@ class BusPassApp {
 
   scrollActiveMonthIntoView() {
     setTimeout(() => {
+      const container = document.getElementById("monthSelectorScroll");
       const activeChip = document.querySelector(`.month-chip[data-month="${this.activeMonthKey}"]`);
-      if (activeChip) {
-        activeChip.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+      if (container && activeChip) {
+        const chipLeft = activeChip.offsetLeft;
+        const chipWidth = activeChip.offsetWidth;
+        const containerWidth = container.offsetWidth;
+        const scrollTarget = chipLeft - (containerWidth / 2) + (chipWidth / 2);
+        container.scrollTo({ left: Math.max(0, scrollTarget), behavior: "smooth" });
       }
     }, 60);
   }
