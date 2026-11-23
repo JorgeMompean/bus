@@ -1,6 +1,6 @@
 {
   "baseYear": 2026,
-  "defaultTripsPerDay": 1,
+  "defaultTripsPerDay": 2,
   "activeMonthKey": "dic",
   "months": {
     "nov": {
