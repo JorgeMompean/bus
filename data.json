@@ -1,7 +1,7 @@
 {
   "baseYear": 2026,
   "defaultTripsPerDay": 2,
-  "activeMonthKey": "abr",
+  "activeMonthKey": "may",
   "months": {
     "nov": {
       "hasMonthlyPass": true,
