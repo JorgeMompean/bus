@@ -1,7 +1,7 @@
 {
   "baseYear": 2026,
   "defaultTripsPerDay": 2,
-  "activeMonthKey": "dic",
+  "activeMonthKey": "nov",
   "months": {
     "nov": {
       "hasMonthlyPass": true,
@@ -18,7 +18,8 @@
         "18": 2,
         "19": 2,
         "23": 2,
-        "26": 2
+        "26": 2,
+        "30": 2
       }
     },
     "dic": {
