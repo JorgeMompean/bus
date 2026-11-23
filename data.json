@@ -91,7 +91,7 @@
     },
     "may": {
       "hasMonthlyPass": false,
-      "eightPassesCount": 2,
+      "eightPassesCount": 3,
       "eightLooseTrips": 0,
       "selectedDays": {
         "3": 2,
@@ -104,7 +104,9 @@
         "18": 2,
         "19": 2,
         "24": 2,
-        "25": 2
+        "25": 2,
+        "26": 2,
+        "31": 2
       }
     }
   }
