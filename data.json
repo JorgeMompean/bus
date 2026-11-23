@@ -38,11 +38,12 @@
       }
     },
     "ene": {
-      "hasMonthlyPass": true,
+      "hasMonthlyPass": false,
       "eightPassesCount": 0,
       "eightLooseTrips": 0,
       "selectedDays": {
-        "8": 2
+        "8": 2,
+        "11": 2
       }
     },
     "feb": {
